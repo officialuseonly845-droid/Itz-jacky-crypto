@@ -2,7 +2,7 @@ import asyncio
 import requests
 import os
 import time
-from aiohttp.web import Application, AppRunner, TCPSite, Response
+from aiohttp.web import Application as WebApp, AppRunner, TCPSite, Response
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -17,14 +17,14 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CMC_KEY = os.getenv("CMC_KEY")
 NEWS_KEY = os.getenv("NEWS_KEY")
 
-PORT = int(os.getenv("PORT", 8080))
+PORT = int(os.getenv("PORT", 8080)) # Ensure PORT is an integer
 GROUP_FILE = "groups.txt"
 FOOTER = "\n\n( OLDY CRYPTO ₿ )"
 # ==========================================
 
-# ---- ENV SAFETY ----
 if not TELEGRAM_TOKEN:
-    raise ValueError("TELEGRAM_TOKEN missing in environment variables")
+    print("ERROR: TELEGRAM_TOKEN is not set in environment variables.")
+    exit(1)
 
 # message counter per group
 message_counter = {}
@@ -34,39 +34,35 @@ async def checkHealth(request):
     return Response(text="Oldy Crypto Update Alive")
 
 async def startServer():
-    app = Application()
-    app.router.add_get('/', checkHealth)
-    app.router.add_get('/healthz', checkHealth)
+    # Using WebApp alias to avoid conflict with Telegram's Application
+    web_app = WebApp()
+    web_app.router.add_get('/', checkHealth)
+    web_app.router.add_get('/healthz', checkHealth)
 
-    runner = AppRunner(app)
+    runner = AppRunner(web_app)
     await runner.setup()
 
     site = TCPSite(runner, '0.0.0.0', PORT)
     await site.start()
-
     print(f"KeepAlive server running on port {PORT}")
 
 # ---------- GROUP SAVE SYSTEM ----------
 def save_group(chat_id):
-    try:
-        if not os.path.exists(GROUP_FILE):
-            open(GROUP_FILE, "w").close()
+    if not os.path.exists(GROUP_FILE):
+        with open(GROUP_FILE, "w") as f: pass
 
-        with open(GROUP_FILE, "r+") as f:
-            groups = f.read().splitlines()
-            if str(chat_id) not in groups:
-                f.write(str(chat_id) + "\n")
-    except:
-        pass
+    with open(GROUP_FILE, "r") as f:
+        groups = f.read().splitlines()
+    
+    if str(chat_id) not in groups:
+        with open(GROUP_FILE, "a") as f:
+            f.write(str(chat_id) + "\n")
 
 def load_groups():
-    try:
-        if not os.path.exists(GROUP_FILE):
-            return []
-        with open(GROUP_FILE, "r") as f:
-            return f.read().splitlines()
-    except:
+    if not os.path.exists(GROUP_FILE):
         return []
+    with open(GROUP_FILE, "r") as f:
+        return f.read().splitlines()
 
 # ---------- CRYPTO FUNCTIONS ----------
 def get_btc_price():
@@ -77,17 +73,18 @@ def get_btc_price():
         r = requests.get(url, headers=headers, params=params, timeout=10)
         data = r.json()
         return round(data["data"]["BTC"]["quote"]["USD"]["price"], 2)
-    except:
+    except Exception as e:
+        print(f"Price Fetch Error: {e}")
         return "N/A"
 
 def get_news():
     try:
         url = f"https://cryptonews-api.com/api/v1/category?section=general&items=1&token={NEWS_KEY}"
         r = requests.get(url, timeout=10)
-        data = r.json()
-        return data["data"][0]["title"]
-    except:
-        return "No news available"
+        return r.json()["data"][0]["title"]
+    except Exception as e:
+        print(f"News Fetch Error: {e}")
+        return "No recent news available"
 
 # ---------- COMMANDS ----------
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -129,14 +126,10 @@ async def capture_and_react(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------- GLOBAL ERROR HANDLER ----------
 async def error_handler(update, context):
-    print("----- GLOBAL ERROR -----")
-    print("Update:", update)
-    print("Error:", context.error)
+    print(f"----- GLOBAL ERROR -----\nUpdate: {update}\nError: {context.error}")
 
 # ---------- UPDATE SCHEDULER ----------
-async def send_updates(app):
-    bot = app.bot
-
+async def send_updates(bot):
     while True:
         try:
             price = get_btc_price()
@@ -150,36 +143,48 @@ async def send_updates(app):
             )
 
             groups = load_groups()
-
             for gid in groups:
                 try:
                     await bot.send_message(chat_id=gid, text=message)
                 except Exception as e:
-                    print("Send Error:", e)
+                    print(f"Send Error to {gid}: {e}")
 
         except Exception as e:
-            print("Update Loop Error:", e)
+            print(f"Update Loop Error: {e}")
 
-        await asyncio.sleep(3600)
+        await asyncio.sleep(3600)  # 1 hour
 
 # ---------- MAIN ----------
 async def main():
-    print("Starting Oldy Crypto Update Bot...")
-
+    # Start the Web Server
     await startServer()
 
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    # Build the Telegram Application
+    # We use the full path to avoid any ambiguity
+    ptb_app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start_cmd))
-    app.add_handler(CommandHandler("updates", updates_cmd))
-    app.add_handler(MessageHandler(filters.ALL, capture_and_react))
+    ptb_app.add_handler(CommandHandler("start", start_cmd))
+    ptb_app.add_handler(CommandHandler("updates", updates_cmd))
+    ptb_app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), capture_and_react))
 
-    app.add_error_handler(error_handler)
+    ptb_app.add_error_handler(error_handler)
 
-    asyncio.create_task(send_updates(app))
-
-    print("Bot Running...")
-    await app.run_polling()
+    # Initialize and start the bot manually to keep the loop under control
+    async with ptb_app:
+        await ptb_app.initialize()
+        await ptb_app.start()
+        
+        # Start background tasks
+        asyncio.create_task(send_updates(ptb_app.bot))
+        
+        print("Oldy Crypto Update Bot Running...")
+        await ptb_app.updater.start_polling()
+        
+        # Keep running until interrupted
+        await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        print("Bot application stopped.")
