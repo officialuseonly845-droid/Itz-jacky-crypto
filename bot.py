@@ -2,6 +2,7 @@ import asyncio
 import os
 import sys
 import requests
+import time
 from aiohttp import web
 from telegram import Update
 from telegram.ext import (
@@ -21,7 +22,7 @@ GROUP_FILE = "groups.txt"
 FOOTER = "\n\n( OLDY CRYPTO ₿ )"
 # ==========================================
 
-# --- Web Server for Render Health Checks ---
+# --- Web Server for Health Checks ---
 async def handle_health(request):
     return web.Response(text="Bot Status: Online", status=200)
 
@@ -37,7 +38,6 @@ async def start_web_server():
 # --- Helper Functions ---
 def get_crypto_update():
     try:
-        # Fetch BTC Price
         p_res = requests.get(
             "https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest",
             headers={"X-CMC_PRO_API_KEY": CMC_KEY},
@@ -46,7 +46,6 @@ def get_crypto_update():
         )
         price = round(p_res.json()["data"]["BTC"]["quote"]["USD"]["price"], 2)
         
-        # Fetch News
         n_res = requests.get(
             f"https://cryptonews-api.com/api/v1/category?section=general&items=1&token={NEWS_KEY}",
             timeout=10
@@ -70,12 +69,24 @@ def save_chat(chat_id):
 # --- Command & Message Handlers ---
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_chat(update.effective_chat.id)
-    await update.message.reply_text("Oldy Crypto Bot is now active in this chat! 🚀")
+    await update.message.reply_text("hey I am alive!! 😄\n\nMade by ( TEAM OLDY CRYPTO )")
+
+async def updates_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Instant manual update
+    start_time = time.time()
+    msg = await update.message.reply_text("Checking latest crypto market data...")
+    
+    content = get_crypto_update()
+    ping = round((time.time() - start_time) * 1000)
+    
+    if content:
+        await msg.edit_text(f"{content}\n⚡ Ping: {ping}ms")
+    else:
+        await msg.edit_text("❌ Error fetching data. Please try again later.")
 
 async def reaction_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type in ["group", "supergroup"]:
         save_chat(update.effective_chat.id)
-        # Simple counter logic
         count = context.chat_data.get('msg_count', 0) + 1
         context.chat_data['msg_count'] = count
         if count % 7 == 0:
@@ -100,31 +111,28 @@ async def main():
         print("❌ CRITICAL: TELEGRAM_TOKEN environment variable is missing!")
         sys.exit(1)
 
-    # 1. Satisfy Render's port requirement immediately
     await start_web_server()
 
-    # 2. Build the Application
     print("🤖 Booting Bot (Compatible with Python 3.14)...")
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
-    # 3. Register Handlers
+    # Handlers
     app.add_handler(CommandHandler("start", start_handler))
+    app.add_handler(CommandHandler("updates", updates_handler)) # Added back!
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), reaction_handler))
 
-    # 4. Schedule Hourly Job (starts in 10 seconds, repeats every 3600s)
+    # Job Queue for Auto-Updates
     app.job_queue.run_repeating(send_hourly_update, interval=3600, first=10)
 
-    # 5. Execute
     async with app:
         await app.initialize()
         await app.start()
         print("🚀 Bot is polling for updates...")
         await app.updater.start_polling()
-        # Prevent the script from finishing
         await asyncio.Event().wait()
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
-        print("Bot deployment terminated.")
+        pass
