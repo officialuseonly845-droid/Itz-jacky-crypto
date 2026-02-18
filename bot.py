@@ -17,10 +17,14 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CMC_KEY = os.getenv("CMC_KEY")
 NEWS_KEY = os.getenv("NEWS_KEY")
 
-PORT = 8080
+PORT = int(os.getenv("PORT", 8080))
 GROUP_FILE = "groups.txt"
 FOOTER = "\n\n( OLDY CRYPTO ₿ )"
 # ==========================================
+
+# ---- ENV SAFETY ----
+if not TELEGRAM_TOKEN:
+    raise ValueError("TELEGRAM_TOKEN missing in environment variables")
 
 # message counter per group
 message_counter = {}
@@ -44,33 +48,46 @@ async def startServer():
 
 # ---------- GROUP SAVE SYSTEM ----------
 def save_group(chat_id):
-    if not os.path.exists(GROUP_FILE):
-        open(GROUP_FILE, "w").close()
+    try:
+        if not os.path.exists(GROUP_FILE):
+            open(GROUP_FILE, "w").close()
 
-    with open(GROUP_FILE, "r+") as f:
-        groups = f.read().splitlines()
-        if str(chat_id) not in groups:
-            f.write(str(chat_id) + "\n")
+        with open(GROUP_FILE, "r+") as f:
+            groups = f.read().splitlines()
+            if str(chat_id) not in groups:
+                f.write(str(chat_id) + "\n")
+    except:
+        pass
 
 def load_groups():
-    if not os.path.exists(GROUP_FILE):
+    try:
+        if not os.path.exists(GROUP_FILE):
+            return []
+        with open(GROUP_FILE, "r") as f:
+            return f.read().splitlines()
+    except:
         return []
-    with open(GROUP_FILE, "r") as f:
-        return f.read().splitlines()
 
 # ---------- CRYPTO FUNCTIONS ----------
 def get_btc_price():
-    url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest"
-    headers = {"X-CMC_PRO_API_KEY": CMC_KEY}
-    params = {"symbol": "BTC"}
-    r = requests.get(url, headers=headers, params=params, timeout=10)
-    data = r.json()
-    return round(data["data"]["BTC"]["quote"]["USD"]["price"], 2)
+    try:
+        url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest"
+        headers = {"X-CMC_PRO_API_KEY": CMC_KEY}
+        params = {"symbol": "BTC"}
+        r = requests.get(url, headers=headers, params=params, timeout=10)
+        data = r.json()
+        return round(data["data"]["BTC"]["quote"]["USD"]["price"], 2)
+    except:
+        return "N/A"
 
 def get_news():
-    url = f"https://cryptonews-api.com/api/v1/category?section=general&items=1&token={NEWS_KEY}"
-    r = requests.get(url, timeout=10)
-    return r.json()["data"][0]["title"]
+    try:
+        url = f"https://cryptonews-api.com/api/v1/category?section=general&items=1&token={NEWS_KEY}"
+        r = requests.get(url, timeout=10)
+        data = r.json()
+        return data["data"][0]["title"]
+    except:
+        return "No news available"
 
 # ---------- COMMANDS ----------
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -102,10 +119,8 @@ async def capture_and_react(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = chat.id
     save_group(chat_id)
 
-    # Count messages
     message_counter[chat_id] = message_counter.get(chat_id, 0) + 1
 
-    # React every 7th message
     if message_counter[chat_id] % 7 == 0:
         try:
             await update.message.reply_text("😄")
@@ -145,10 +160,12 @@ async def send_updates(app):
         except Exception as e:
             print("Update Loop Error:", e)
 
-        await asyncio.sleep(3600)  # every 1 hour
+        await asyncio.sleep(3600)
 
 # ---------- MAIN ----------
 async def main():
+    print("Starting Oldy Crypto Update Bot...")
+
     await startServer()
 
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
@@ -161,7 +178,7 @@ async def main():
 
     asyncio.create_task(send_updates(app))
 
-    print("Oldy Crypto Update Bot Running...")
+    print("Bot Running...")
     await app.run_polling()
 
 if __name__ == "__main__":
