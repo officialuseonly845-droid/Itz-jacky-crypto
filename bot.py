@@ -1,138 +1,84 @@
 import asyncio
 import os
-import sys
-import requests
-import time
+import logging
 from aiohttp import web
-from telegram import Update
-from telegram.ext import (
-    ApplicationBuilder,
-    MessageHandler,
-    CommandHandler,
-    filters,
-    ContextTypes,
-)
+from aiogram import Bot, Dispatcher, types
+from aiogram.filters import Command, CommandStart, ChatMemberUpdatedFilter, IS_ADMIN
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# ================= CONFIG =================
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-CMC_KEY = os.getenv("CMC_KEY")
-NEWS_KEY = os.getenv("NEWS_KEY")
-PORT = int(os.getenv("PORT", 10000)) 
-GROUP_FILE = "groups.txt"
-FOOTER = "\n\n( OLDY CRYPTO ₿ )"
-# ==========================================
+# Environment Variables
+TOKEN = os.getenv("BOT_TOKEN")
+OWNER_ID = int(os.getenv("OWNER_ID"))
+CMC_API_KEY = os.getenv("CMC_API_KEY")
 
-# --- Web Server for Health Checks ---
-async def handle_health(request):
-    return web.Response(text="Bot Status: Online", status=200)
+bot = Bot(token=TOKEN)
+dp = Dispatcher()
+known_groups = set()
 
-async def start_web_server():
+# --- Discovery: Bot added as Admin ---
+@dp.my_chat_member(ChatMemberUpdatedFilter(member_status_changed=IS_ADMIN))
+async def on_bot_promoted(event: types.ChatMemberUpdated):
+    known_groups.add(event.chat.id)
+    logging.info(f"Bot promoted in: {event.chat.id}")
+
+# --- Commands ---
+@dp.message(CommandStart())
+async def start_cmd(message: types.Message):
+    if message.chat.type in ['group', 'supergroup', 'channel']:
+        known_groups.add(message.chat.id)
+    await message.answer("HEY I AM CRYPTO OWL 🦉.")
+
+@dp.message(Command("addchannel"))
+async def add_channel_cmd(message: types.Message):
+    if message.from_user.id != OWNER_ID: return
+    bot_info = await bot.get_me()
+    url = f"https://t.me/{bot_info.username}?startchannel=true"
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="➕ Add to Channel", url=url)]])
+    await message.answer("Click below to add me to your channel:", reply_markup=kb)
+
+@dp.message(Command("price"))
+async def price_cmd(message: types.Message):
+    args = message.text.split()
+    symbol = args[1].upper() if len(args) > 1 else "BTC"
+    
+    try:
+        import aiohttp
+        async with aiohttp.ClientSession() as session:
+            url = f"https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest?symbol={symbol}"
+            headers = {'X-CMC_PRO_API_KEY': CMC_API_KEY}
+            async with session.get(url, headers=headers) as resp:
+                data = await resp.json()
+                price = data['data'][symbol]['quote']['USD']['price']
+                await message.answer(f"💰 *{symbol}* Price: ${price:,.2f}", parse_mode="Markdown")
+    except Exception:
+        await message.answer("Could not fetch price. Check the symbol.")
+
+@dp.message(Command("post"))
+async def post_cmd(message: types.Message):
+    if message.from_user.id != OWNER_ID: return
+    
+    caption = message.caption or message.text.replace('/post', '').strip()
+    photo = message.photo[-1].file_id if message.photo else None
+    
+    for chat_id in known_groups:
+        try:
+            if photo: await bot.send_photo(chat_id, photo, caption=caption)
+            else: await bot.send_message(chat_id, caption)
+        except Exception as e:
+            logging.error(f"Post failed for {chat_id}: {e}")
+    await message.answer(f"Broadcast sent to {len(known_groups)} chats.")
+
+# --- Web Server (Uptime) ---
+async def start_http_server():
     app = web.Application()
-    app.router.add_get("/", handle_health)
+    app.router.add_get('/', lambda r: web.Response(text="Bot is alive!"))
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", PORT)
-    await site.start()
-    print(f"✅ Health-check server online on port {PORT}")
+    await web.TCPSite(runner, '0.0.0.0', int(os.getenv("PORT", 8080))).start()
 
-# --- Helper Functions ---
-def get_crypto_update():
-    try:
-        p_res = requests.get(
-            "https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest",
-            headers={"X-CMC_PRO_API_KEY": CMC_KEY},
-            params={"symbol": "BTC"},
-            timeout=10
-        )
-        price = round(p_res.json()["data"]["BTC"]["quote"]["USD"]["price"], 2)
-        
-        n_res = requests.get(
-            f"https://cryptonews-api.com/api/v1/category?section=general&items=1&token={NEWS_KEY}",
-            timeout=10
-        )
-        news = n_res.json()["data"][0]["title"]
-        
-        return f"📊 Oldy Crypto Update\n\n💰 BTC Price: ${price}\n📰 News: {news}{FOOTER}"
-    except Exception as e:
-        print(f"⚠️ API Data Error: {e}")
-        return None
-
-def save_chat(chat_id):
-    if not os.path.exists(GROUP_FILE):
-        open(GROUP_FILE, "w").close()
-    with open(GROUP_FILE, "r") as f:
-        chats = f.read().splitlines()
-    if str(chat_id) not in chats:
-        with open(GROUP_FILE, "a") as f:
-            f.write(str(chat_id) + "\n")
-
-# --- Command & Message Handlers ---
-async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    save_chat(update.effective_chat.id)
-    await update.message.reply_text("hey I am alive!! 😄\n\nMade by ( TEAM OLDY CRYPTO )")
-
-async def updates_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Instant manual update
-    start_time = time.time()
-    msg = await update.message.reply_text("Checking latest crypto market data...")
-    
-    content = get_crypto_update()
-    ping = round((time.time() - start_time) * 1000)
-    
-    if content:
-        await msg.edit_text(f"{content}\n⚡ Ping: {ping}ms")
-    else:
-        await msg.edit_text("❌ Error fetching data. Please try again later.")
-
-async def reaction_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_chat.type in ["group", "supergroup"]:
-        save_chat(update.effective_chat.id)
-        count = context.chat_data.get('msg_count', 0) + 1
-        context.chat_data['msg_count'] = count
-        if count % 7 == 0:
-            await update.message.reply_text("😄")
-
-# --- Automated Task (JobQueue) ---
-async def send_hourly_update(context: ContextTypes.DEFAULT_TYPE):
-    content = get_crypto_update()
-    if not content or not os.path.exists(GROUP_FILE):
-        return
-    
-    with open(GROUP_FILE, "r") as f:
-        for chat_id in f.read().splitlines():
-            try:
-                await context.bot.send_message(chat_id=chat_id, text=content)
-            except Exception as e:
-                print(f"Could not send to {chat_id}: {e}")
-
-# --- Main Runtime ---
 async def main():
-    if not TELEGRAM_TOKEN:
-        print("❌ CRITICAL: TELEGRAM_TOKEN environment variable is missing!")
-        sys.exit(1)
-
-    await start_web_server()
-
-    print("🤖 Booting Bot (Compatible with Python 3.14)...")
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-
-    # Handlers
-    app.add_handler(CommandHandler("start", start_handler))
-    app.add_handler(CommandHandler("updates", updates_handler)) # Added back!
-    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), reaction_handler))
-
-    # Job Queue for Auto-Updates
-    app.job_queue.run_repeating(send_hourly_update, interval=3600, first=10)
-
-    async with app:
-        await app.initialize()
-        await app.start()
-        print("🚀 Bot is polling for updates...")
-        await app.updater.start_polling()
-        await asyncio.Event().wait()
+    logging.basicConfig(level=logging.INFO)
+    await asyncio.gather(start_http_server(), dp.start_polling(bot))
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        pass
+    asyncio.run(main())
