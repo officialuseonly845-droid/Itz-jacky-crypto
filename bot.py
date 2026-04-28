@@ -5,28 +5,26 @@ from aiohttp import web
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command, CommandStart, ChatMemberUpdatedFilter, IS_ADMIN
 from aiogram.methods.copy_messages import CopyMessages
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# --- Configuration ---
 TOKEN = os.getenv("BOT_TOKEN")
 OWNER_ID = int(os.getenv("OWNER_ID"))
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
-# Memory mode: Sab yahi save hoga
 known_groups = set()
 
-# --- Admin Auto-Discovery ---
+# --- Admin Discovery ---
 @dp.my_chat_member(ChatMemberUpdatedFilter(member_status_changed=IS_ADMIN))
 async def on_bot_promoted(event: types.ChatMemberUpdated):
     known_groups.add(event.chat.id)
-    logging.info(f"Bot promoted/added in: {event.chat.id}")
 
-# --- Start Command (Refined) ---
+# --- Start Command ---
 @dp.message(CommandStart())
 async def start_cmd(message: types.Message):
     if message.chat.type in ['group', 'supergroup', 'channel']:
         known_groups.add(message.chat.id)
-        
+    
     start_text = (
         "**HEY! I AM CRYPTO OWL 🦉.**\n\n"
         "**IF YOU MANAGE MANY GROUPS AND CHANNELS AND WANT TO SEND THE SAME MESSAGE TO ALL OF THEM, USE THE /post COMMAND!**\n\n"
@@ -40,28 +38,44 @@ async def start_cmd(message: types.Message):
     )
     await message.answer(start_text, parse_mode="Markdown")
 
-# --- Broadcast Logic (Reply to Post) ---
+# --- Add Channel Command (Inline Mode) ---
+@dp.message(Command("addchannel"))
+async def add_channel_cmd(message: types.Message):
+    if message.from_user.id != OWNER_ID: return
+    bot_info = await bot.get_me()
+    url = f"https://t.me/{bot_info.username}?startchannel=true"
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="➕ ADD TO CHANNEL/GROUP", url=url)]])
+    await message.answer("Click below to add me to your channel or group:", reply_markup=kb)
+
+# --- Merged Broadcast Logic ---
 @dp.message(Command("post"))
 async def post_cmd(message: types.Message):
-    if message.from_user.id != OWNER_ID:
-        return
-    
-    target = message.reply_to_message
-    if not target:
-        return await message.answer("⚠️ Reply to a message/media with /post to broadcast it.")
+    if message.from_user.id != OWNER_ID: return
 
-    count = 0
-    # Copying logic handles text + media + albums
-    for chat_id in known_groups:
-        try:
-            await bot.copy_message(chat_id, target.chat.id, target.message_id)
-            count += 1
-        except Exception as e:
-            logging.error(f"Failed to post to {chat_id}: {e}")
+    # Case 1: Reply to message (Media/Album)
+    if message.reply_to_message:
+        target = message.reply_to_message
+        if target.media_group_id:
+            history = await bot.get_chat_history(chat_id=target.chat.id, limit=20)
+            message_ids = sorted([m.message_id for m in history if m.media_group_id == target.media_group_id])
+        else:
+            message_ids = [target.message_id]
+        
+        for chat_id in known_groups:
+            try: await bot(CopyMessages(chat_id=chat_id, from_chat_id=target.chat.id, message_ids=message_ids))
+            except Exception as e: logging.error(e)
             
-    await message.answer(f"✅ Broadcasted successfully to {count} chats.")
+    # Case 2: Direct Text
+    else:
+        text = message.text.replace('/post', '').strip()
+        if not text: return await message.answer("⚠️ Send /post [text] or reply to a message.")
+        for chat_id in known_groups:
+            try: await bot.send_message(chat_id, text)
+            except Exception as e: logging.error(e)
 
-# --- Web Server (Uptime) ---
+    await message.answer("✅ Broadcast complete!")
+
+# --- Server ---
 async def start_http_server():
     app = web.Application()
     app.router.add_get('/', lambda r: web.Response(text="Bot is alive!"))
@@ -69,7 +83,6 @@ async def start_http_server():
     await runner.setup()
     await web.TCPSite(runner, '0.0.0.0', int(os.getenv("PORT", 8080))).start()
 
-# --- Main ---
 async def main():
     logging.basicConfig(level=logging.INFO)
     await asyncio.gather(start_http_server(), dp.start_polling(bot))
