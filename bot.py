@@ -5,9 +5,9 @@ import re
 import base64
 from github import Github
 from aiohttp import web
-from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command, CommandStart
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import Command, CommandStart, ChatMemberUpdatedFilter, IS_ADMIN
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ChatMemberUpdated
 from sympy import sympify, diff, integrate, symbols
 
 # --- CONFIG ---
@@ -58,14 +58,10 @@ def save_id_to_github(chat_id):
         ids.append(chat_id)
         update_github_file(ids)
 
-# --- KEYBOARDS ---
-async def get_welcome_kb():
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📢 MAIN CHANNEL", url="https://t.me/cryptowitholdy")],
-        [InlineKeyboardButton(text="📊 TRADING CHANNEL", url="https://t.me/market_analysis1920")],
-        [InlineKeyboardButton(text="➕ ADD ME TO GC", url=f"https://t.me/{(await bot.get_me()).username}?startgroup=true")]
-    ])
-    return kb
+# --- AUTO-ADD HANDLER ---
+@dp.my_chat_member(ChatMemberUpdatedFilter(member_status_changed=IS_ADMIN))
+async def on_bot_added_as_admin(event: ChatMemberUpdated):
+    save_id_to_github(event.chat.id)
 
 # --- HANDLERS ---
 
@@ -73,8 +69,13 @@ async def get_welcome_kb():
 async def start_handler(message: types.Message):
     if message.chat.type in ['group', 'supergroup', 'channel']:
         save_id_to_github(message.chat.id)
-    welcome_text = "👋 **Welcome to Crypto Owl 🦉**\n━━━━━━━━━━━━━━━━━━━━━━━━\nPowered by **TEAM OLDY CRYPTO ❤️‍🩹**"
-    await message.answer(welcome_text, reply_markup=await get_welcome_kb(), parse_mode="Markdown")
+    bot_user = await bot.get_me()
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📢 MAIN CHANNEL", url="https://t.me/cryptowitholdy")],
+        [InlineKeyboardButton(text="📊 TRADING CHANNEL", url="https://t.me/market_analysis1920")],
+        [InlineKeyboardButton(text="➕ ADD ME TO GC", url=f"https://t.me/{bot_user.username}?startgroup=true")]
+    ])
+    await message.answer("👋 **Welcome to Crypto Owl 🦉**\n━━━━━━━━━━━━━━━━━━━━━━━━\nPowered by **TEAM OLDY CRYPTO ❤️‍🩹**", reply_markup=kb, parse_mode="Markdown")
 
 @dp.message(Command("addchannel"))
 async def add_ch_handler(message: types.Message):
@@ -90,7 +91,7 @@ async def update_handler(message: types.Message):
     bar_steps = ["░░░░░░░░░░", "██░░░░░░░░", "████░░░░░░", "██████░░░░", "████████░░", "██████████"]
     for i, bar in enumerate(bar_steps):
         await status_msg.edit_text(f"`{get_sync_ui('DATABASE RECONCILIATION', 'PROCESSING...', bar, i*20)}`", parse_mode="MarkdownV2")
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.4)
 
     ids = get_stored_ids()
     chat_names = []
@@ -108,16 +109,17 @@ async def post_handler(message: types.Message):
     if message.from_user.id != OWNER_ID: return
     text_to_send = message.text.replace("/post", "").strip()
     reply = message.reply_to_message
-    if not reply and not text_to_send: return await message.answer("❌ Error: Reply to a post OR type text after /post")
+    if not reply and not text_to_send: return await message.answer("❌ Error: Provide content")
 
     status_msg = await message.answer("`Booting...`", parse_mode="MarkdownV2")
     
-    # Fast Animation showing sending
+    # 1. Show Progress First
     bar_steps = ["░░░░░░░░░░", "████░░░░░░", "████████░░", "██████████"]
     for i, bar in enumerate(bar_steps):
         await status_msg.edit_text(f"`{get_sync_ui('BROADCAST PROTOCOL', 'SENDING...', bar, i*33 if i<3 else 100)}`", parse_mode="MarkdownV2")
-        await asyncio.sleep(0.4)
+        await asyncio.sleep(0.3)
 
+    # 2. Run Background Broadcast
     ids = get_stored_ids()
     sent = 0
     for chat_id in ids:
@@ -126,8 +128,10 @@ async def post_handler(message: types.Message):
             else: await bot.send_message(chat_id=chat_id, text=text_to_send)
             sent += 1
         except: continue
-        
-    # CRITICAL: Edit status to 'SENT ✅' only after loop finishes
+    
+    # 3. Final Step: FORCE EDIT to SENT ✅
+    # Hum yahan thoda delay de rahe hain taaki Telegram api sync ho jaye
+    await asyncio.sleep(0.5) 
     final_post_ui = f"`{get_sync_ui('BROADCAST PROTOCOL', 'SENT ✅', '██████████', 100)}`" + f"\n\n🚀 **Broadcast Finished!**\nSent to: `{sent}` chats."
     await status_msg.edit_text(final_post_ui, parse_mode="MarkdownV2")
 
@@ -141,7 +145,6 @@ async def delete_handler(message: types.Message):
             ids.remove(target_id)
             update_github_file(ids)
             await message.answer(f"🗑 **Deleted:** `{target_id}`")
-        else: await message.answer("❓ Not found.")
     except: await message.answer("💡 Usage: `/delete ID`")
 
 @dp.message(Command("calculate"))
@@ -168,3 +171,4 @@ async def main():
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     asyncio.run(main())
+
