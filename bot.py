@@ -77,11 +77,7 @@ async def start_handler(message: types.Message):
     welcome_text = (
         "👋 **Welcome to Crypto Owl 🦉**\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "I am your advanced **Mathematical Assistant** and **Broadcast Manager**.\n\n"
-        "✨ **What I can do:**\n"
-        "• Solve complex Calculus & Math (`/calculate`)\n"
-        "• Manage global broadcasts across groups\n"
-        "• Auto-save group nodes for sync\n\n"
+        "Advanced **Math Assistant** & **Broadcast Manager**.\n\n"
         "Powered by **TEAM OLDY CRYPTO ❤️‍🩹**"
     )
     await message.answer(welcome_text, reply_markup=await get_welcome_kb(), parse_mode="Markdown")
@@ -101,19 +97,15 @@ async def update_handler(message: types.Message):
     
     bar_steps = ["░░░░░░░░░░", "██░░░░░░░░", "████░░░░░░", "██████░░░░", "████████░░", "██████████"]
     for i, bar in enumerate(bar_steps):
-        await status_msg.edit_text(f"`{get_sync_ui('DB RECONCILIATION', 'PROCESSING...', bar, i*20)}`", parse_mode="MarkdownV2")
+        # Yahan 'DATABASE RECONCILIATION' pura daal diya hai
+        await status_msg.edit_text(f"`{get_sync_ui('DATABASE RECONCILIATION', 'PROCESSING...', bar, i*20)}`", parse_mode="MarkdownV2")
         await asyncio.sleep(0.7)
 
     ids = get_stored_ids()
-    chat_names = []
-    for cid in ids:
-        try:
-            chat = await bot.get_chat(cid)
-            chat_names.append(f"✅ {chat.title}")
-        except: chat_names.append(f"❌ Unknown Node")
+    chat_names = [f"✅ {(await bot.get_chat(cid)).title}" for cid in ids if (await bot.get_chat(cid))]
 
     final_report = (
-        f"`{get_sync_ui('DB RECONCILIATION', 'COMPLETED ✅', '██████████', 100)}`"
+        f"`{get_sync_ui('DATABASE RECONCILIATION', 'COMPLETED ✅', '██████████', 100)}`"
         f"\n\n📊 **SYNC COMPLETE**\n" + "\n".join(chat_names)
     )
     await status_msg.edit_text(final_report, parse_mode="MarkdownV2")
@@ -128,23 +120,24 @@ async def post_handler(message: types.Message):
 
     status_msg = await message.answer("`Booting...`", parse_mode="MarkdownV2")
     bar_steps = ["░░░░░░░░░░", "████░░░░░░", "████████░░", "██████████"]
+    
+    # Broadcast process
+    ids = get_stored_ids()
+    sent = 0
     for i, bar in enumerate(bar_steps):
         await status_msg.edit_text(f"`{get_sync_ui('BROADCAST PROTOCOL', 'SENDING...', bar, i*33 if i<3 else 100)}`", parse_mode="MarkdownV2")
         await asyncio.sleep(0.6)
 
-    ids = get_stored_ids()
-    sent = 0
     for chat_id in ids:
         try:
-            if reply:
-                await bot.copy_message(chat_id=chat_id, from_chat_id=message.chat.id, message_id=reply.message_id)
-            else:
-                await bot.send_message(chat_id=chat_id, text=text_to_send)
+            if reply: await bot.copy_message(chat_id=chat_id, from_chat_id=message.chat.id, message_id=reply.message_id)
+            else: await bot.send_message(chat_id=chat_id, text=text_to_send)
             sent += 1
         except: continue
         
+    # Yahan 'SENT ✅' edit logic daal diya hai
     final_post_ui = (
-        f"`{get_sync_ui('BROADCAST PROTOCOL', 'COMPLETED ✅', '██████████', 100)}`"
+        f"`{get_sync_ui('BROADCAST PROTOCOL', 'SENT ✅', '██████████', 100)}`"
         f"\n\n🚀 **Broadcast Finished!**\nSent to: `{sent}` chats."
     )
     await status_msg.edit_text(final_post_ui, parse_mode="MarkdownV2")
@@ -157,14 +150,10 @@ async def delete_handler(message: types.Message):
         ids = get_stored_ids()
         if target_id in ids:
             ids.remove(target_id)
-            if update_github_file(ids):
-                await message.answer(f"🗑 **Deleted:** `{target_id}` removed.")
-            else:
-                await message.answer("❌ Update Failed.")
-        else:
-            await message.answer("❓ ID not found.")
-    except:
-        await message.answer("💡 Usage: `/delete -100xxx`")
+            update_github_file(ids)
+            await message.answer(f"🗑 **Deleted:** `{target_id}` removed.")
+        else: await message.answer("❓ ID not found.")
+    except: await message.answer("💡 Usage: `/delete ID`")
 
 @dp.message(Command("calculate"))
 async def calc_handler(message: types.Message):
@@ -174,14 +163,9 @@ async def calc_handler(message: types.Message):
         q = query.lower().replace('^', '**')
         q = re.sub(r'(\d)([a-z\(])', r'\1*\2', q)
         x = symbols('x')
-        if 'int' in q:
-            res = integrate(sympify(q.replace('int','')), x)
-            ans = f"∫ dx = {res} + C"
-        elif 'diff' in q or 'dy/dx' in q:
-            res = diff(sympify(re.sub(r'(diff|dy/dx)','',q)), x)
-            ans = f"d/dx = {res}"
-        else:
-            ans = f"Result: {sympify(q)}"
+        if 'int' in q: res = integrate(sympify(q.replace('int','')), x); ans = f"∫ dx = {res} + C"
+        elif 'diff' in q or 'dy/dx' in q: res = diff(sympify(re.sub(r'(diff|dy/dx)','',q)), x); ans = f"d/dx = {res}"
+        else: ans = f"Result: {sympify(q)}"
         await message.answer(f"🔢 **Math Owl**\n`{ans}`", parse_mode="Markdown")
     except: await message.answer("❌ Syntax Error")
 
@@ -195,4 +179,3 @@ async def main():
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     asyncio.run(main())
-
