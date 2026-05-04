@@ -73,21 +73,13 @@ async def get_welcome_kb():
 async def start_handler(message: types.Message):
     if message.chat.type in ['group', 'supergroup', 'channel']:
         save_id_to_github(message.chat.id)
-    
-    welcome_text = (
-        "👋 **Welcome to Crypto Owl 🦉**\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "Advanced **Math Assistant** & **Broadcast Manager**.\n\n"
-        "Powered by **TEAM OLDY CRYPTO ❤️‍🩹**"
-    )
+    welcome_text = "👋 **Welcome to Crypto Owl 🦉**\n━━━━━━━━━━━━━━━━━━━━━━━━\nPowered by **TEAM OLDY CRYPTO ❤️‍🩹**"
     await message.answer(welcome_text, reply_markup=await get_welcome_kb(), parse_mode="Markdown")
 
 @dp.message(Command("addchannel"))
 async def add_ch_handler(message: types.Message):
     bot_user = await bot.get_me()
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="➕ Add Me to Your Group", url=f"https://t.me/{bot_user.username}?startgroup=true")]
-    ])
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="➕ Add Me to Your Group", url=f"https://t.me/{bot_user.username}?startgroup=true")]])
     await message.answer("✨ **Invite me as an Admin to start broadcasting!**", reply_markup=kb, parse_mode="Markdown")
 
 @dp.message(Command("update"))
@@ -97,17 +89,18 @@ async def update_handler(message: types.Message):
     
     bar_steps = ["░░░░░░░░░░", "██░░░░░░░░", "████░░░░░░", "██████░░░░", "████████░░", "██████████"]
     for i, bar in enumerate(bar_steps):
-        # Yahan 'DATABASE RECONCILIATION' pura daal diya hai
         await status_msg.edit_text(f"`{get_sync_ui('DATABASE RECONCILIATION', 'PROCESSING...', bar, i*20)}`", parse_mode="MarkdownV2")
-        await asyncio.sleep(0.7)
+        await asyncio.sleep(0.5)
 
     ids = get_stored_ids()
-    chat_names = [f"✅ {(await bot.get_chat(cid)).title}" for cid in ids if (await bot.get_chat(cid))]
+    chat_names = []
+    for cid in ids:
+        try:
+            chat = await bot.get_chat(cid)
+            chat_names.append(f"✅ {chat.title}")
+        except: continue
 
-    final_report = (
-        f"`{get_sync_ui('DATABASE RECONCILIATION', 'COMPLETED ✅', '██████████', 100)}`"
-        f"\n\n📊 **SYNC COMPLETE**\n" + "\n".join(chat_names)
-    )
+    final_report = f"`{get_sync_ui('DATABASE RECONCILIATION', 'COMPLETED ✅', '██████████', 100)}`" + f"\n\n📊 **SYNC COMPLETE**\n" + "\n".join(chat_names)
     await status_msg.edit_text(final_report, parse_mode="MarkdownV2")
 
 @dp.message(Command("post"))
@@ -115,19 +108,18 @@ async def post_handler(message: types.Message):
     if message.from_user.id != OWNER_ID: return
     text_to_send = message.text.replace("/post", "").strip()
     reply = message.reply_to_message
-    if not reply and not text_to_send:
-        return await message.answer("❌ Error: Reply to a post OR type text after /post")
+    if not reply and not text_to_send: return await message.answer("❌ Error: Reply to a post OR type text after /post")
 
     status_msg = await message.answer("`Booting...`", parse_mode="MarkdownV2")
-    bar_steps = ["░░░░░░░░░░", "████░░░░░░", "████████░░", "██████████"]
     
-    # Broadcast process
-    ids = get_stored_ids()
-    sent = 0
+    # Fast Animation showing sending
+    bar_steps = ["░░░░░░░░░░", "████░░░░░░", "████████░░", "██████████"]
     for i, bar in enumerate(bar_steps):
         await status_msg.edit_text(f"`{get_sync_ui('BROADCAST PROTOCOL', 'SENDING...', bar, i*33 if i<3 else 100)}`", parse_mode="MarkdownV2")
-        await asyncio.sleep(0.6)
+        await asyncio.sleep(0.4)
 
+    ids = get_stored_ids()
+    sent = 0
     for chat_id in ids:
         try:
             if reply: await bot.copy_message(chat_id=chat_id, from_chat_id=message.chat.id, message_id=reply.message_id)
@@ -135,11 +127,8 @@ async def post_handler(message: types.Message):
             sent += 1
         except: continue
         
-    # Yahan 'SENT ✅' edit logic daal diya hai
-    final_post_ui = (
-        f"`{get_sync_ui('BROADCAST PROTOCOL', 'SENT ✅', '██████████', 100)}`"
-        f"\n\n🚀 **Broadcast Finished!**\nSent to: `{sent}` chats."
-    )
+    # CRITICAL: Edit status to 'SENT ✅' only after loop finishes
+    final_post_ui = f"`{get_sync_ui('BROADCAST PROTOCOL', 'SENT ✅', '██████████', 100)}`" + f"\n\n🚀 **Broadcast Finished!**\nSent to: `{sent}` chats."
     await status_msg.edit_text(final_post_ui, parse_mode="MarkdownV2")
 
 @dp.message(Command("delete"))
@@ -151,8 +140,8 @@ async def delete_handler(message: types.Message):
         if target_id in ids:
             ids.remove(target_id)
             update_github_file(ids)
-            await message.answer(f"🗑 **Deleted:** `{target_id}` removed.")
-        else: await message.answer("❓ ID not found.")
+            await message.answer(f"🗑 **Deleted:** `{target_id}`")
+        else: await message.answer("❓ Not found.")
     except: await message.answer("💡 Usage: `/delete ID`")
 
 @dp.message(Command("calculate"))
