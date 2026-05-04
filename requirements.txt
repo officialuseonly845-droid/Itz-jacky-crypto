@@ -1,5 +1,4 @@
 aiogram
 aiohttp
 sympy
-gspread
-oauth2client
+PyGithub
