@@ -32,12 +32,12 @@ def get_post_ui(status, bar, percent):
 # --- SMART MATH PRE-PROCESSOR ---
 def clean_math_query(query):
     q = query.lower().strip()
-    q = re.sub(r'(\d)([a-zA-Z\(])', r'\1*\2', q) # 2x -> 2*x
-    q = q.replace('^', '**') # x^2 -> x**2
-    q = re.sub(r'([a-zA-Z])(\d+)', r'\1**\2', q) # x2 -> x**2
+    q = re.sub(r'(\d)([a-zA-Z\(])', r'\1*\2', q)
+    q = q.replace('^', '**')
+    q = re.sub(r'([a-zA-Z])(\d+)', r'\1**\2', q)
     return q
 
-# --- GITHUB DATABASE LOGIC ---
+# --- GITHUB LOGIC ---
 def get_stored_ids():
     try:
         repo = g.get_repo(REPO_NAME)
@@ -51,7 +51,7 @@ def update_github_file(id_list):
         repo = g.get_repo(REPO_NAME)
         new_data = "\n".join(map(str, id_list))
         contents = repo.get_contents(FILE_PATH)
-        repo.update_file(FILE_PATH, "Bot: DB Sync", new_data, contents.sha)
+        repo.update_file(FILE_PATH, "Bot: Sync Update", new_data, contents.sha)
         return True
     except: return False
 
@@ -71,30 +71,31 @@ async def on_bot_added_as_admin(event: ChatMemberUpdated):
 async def start_handler(message: types.Message):
     if message.chat.type in ['group', 'supergroup', 'channel']: save_id_to_github(message.chat.id)
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📢 MAIN CHANNEL", url="https://t.me/cryptowitholdy")],
-        [InlineKeyboardButton(text="📊 TRADING CHANNEL", url="https://t.me/market_analysis1920")]
+        [InlineKeyboardButton(text="📢 MAIN CHANNEL", url="[https://t.me/cryptowitholdy](https://t.me/cryptowitholdy)")],
+        [InlineKeyboardButton(text="📊 TRADING CHANNEL", url="[https://t.me/market_analysis1920](https://t.me/market_analysis1920)")],
+        [InlineKeyboardButton(text="➕ ADD ME", url=f"[https://t.me/](https://t.me/){(await bot.get_me()).username}?startgroup=true")]
     ])
     await message.answer("👋 **Welcome to Crypto Owl 🦉**\n━━━━━━━━━━━━━━━\nPowered by **TEAM OLDY CRYPTO ❤️‍🩹**", reply_markup=kb, parse_mode="Markdown")
 
 @dp.message(Command("update"))
 async def update_handler(message: types.Message):
     if message.from_user.id != OWNER_ID: return
-    status_msg = await message.answer("`Accessing Database...`", parse_mode="Markdown")
+    status_msg = await message.answer("`Accessing Nodes...`", parse_mode="Markdown")
     bar_steps = ["░░░░░", "▓░░░░", "▓▓░░░", "▓▓▓░░", "▓▓▓▓░", "▓▓▓▓▓"]
     for i, bar in enumerate(bar_steps):
         await status_msg.edit_text(get_update_ui('Processing...', bar, i*20), parse_mode="Markdown")
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(0.6)
     ids = get_stored_ids()
-    await status_msg.edit_text(get_update_ui('Completed ✓', '▓▓▓▓▓', 100) + f"\n\n📊 **Database Synced:** `{len(ids)}` nodes.", parse_mode="Markdown")
+    await status_msg.edit_text(get_update_ui('Completed ✓', '▓▓▓▓▓', 100) + f"\n\n📊 **Synced Nodes:** `{len(ids)}`", parse_mode="Markdown")
 
 @dp.message(Command("post"))
 async def post_handler(message: types.Message):
     if message.from_user.id != OWNER_ID: return
     new_caption = message.text.replace("/post", "").strip()
     reply = message.reply_to_message
-    if not reply and not new_caption: return await message.answer("❌ **Error:** Reply to a post or provide text content.")
+    if not reply and not new_caption: return await message.answer("❌ **Error:** Reply to content or provide text.")
 
-    status_msg = await message.answer("`Preparing Broadcast...`", parse_mode="Markdown")
+    status_msg = await message.answer("`Broadcasting...`")
     ids = get_stored_ids()
     sent = 0
     for chat_id in ids:
@@ -112,30 +113,32 @@ async def calc_handler(message: types.Message):
     raw_query = message.text.replace('/calculate', '').strip()
     if not raw_query: return await message.answer("💡 **Usage:** `/calculate 2x + 10` or `int x^2`")
     
-    status_msg = await message.answer("`Booting Math Engine...`", parse_mode="Markdown")
+    status_msg = await message.answer("`Booting Engine...`", parse_mode="Markdown")
     
-    phrases = ["Initializing Core...", "Neural Parsing...", "Mapping Logic...", "Optimizing Result...", "Finalizing Scan..."]
-    
-    # 4-Second Sprint Loop Animation (14 frames * 0.3s)
-    for i in range(14):
-        # Infinite Sprint Logic: Man resets every 5 frames
-        pos = i % 5 
-        track = ["."] * 5
+    # 🏃‍♂️ HIGH-VELOCITY RUNNING MAN ANIMATION
+    # Total 12 iterations to ensure man sprints across multiple times
+    for i in range(12):
+        pos = i % 6  # Resets position every 6 frames
+        track = ["."] * 6
         track[pos] = "🏃‍♂️"
         running_man = "💨 " + " . ".join(track)
         
-        progress = min(i * 8, 100)
+        progress = min(i * 9, 100)
         bar = "█" * (i % 6) + "░" * (5 - (i % 6))
         
         ui = (
             f"🏃‍♂️ **MATH_ENGINE::RUNNING**\n\n"
             f"```\n{running_man}\n```\n"
-            f"• **STATUS** → `{phrases[i % len(phrases)]}`\n"
-            f"• **LOAD** → `[{bar}]` **{progress}%**\n\n"
-            f"🦉 *Math Owl is sprinting for you...*"
+            f"• **LOAD** → `[{bar}]` **{progress}%**\n"
+            f"• **STATUS** → `Neural Sprinting...` \n\n"
+            f"🦉 *Oldy's Owl is processing your request...*"
         )
-        await status_msg.edit_text(ui, parse_mode="Markdown")
-        await asyncio.sleep(0.3)
+        
+        try:
+            await status_msg.edit_text(ui, parse_mode="Markdown")
+            await asyncio.sleep(0.7) # Optimized for Telegram Edit Limits
+        except:
+            continue
 
     try:
         q = clean_math_query(raw_query)
@@ -149,9 +152,17 @@ async def calc_handler(message: types.Message):
         else:
             ans = f"Result: {sympify(q)}"
         
-        await status_msg.edit_text(f"🔢 **ANALYSIS COMPLETE**\n━━━━━━━━━━━━━━━━━━━━\n📥 **INPUT:** `{raw_query}`\n📤 **OUTPUT:** `{ans}`\n\n✅ `COMPUTATION SUCCESSFUL`", parse_mode="Markdown")
-    except:
-        await status_msg.edit_text("❌ **SYNTAX ERROR**\nEnsure your mathematical expression is valid.", parse_mode="Markdown")
+        final_ui = (
+            f"🔢 **ANALYSIS COMPLETE**\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"📥 **INPUT:** `{raw_query}`\n"
+            f"📤 **OUTPUT:** `{ans}`\n\n"
+            f"✅ `COMPUTATION SUCCESSFUL`"
+        )
+        await status_msg.edit_text(final_ui, parse_mode="Markdown")
+        
+    except Exception:
+        await status_msg.edit_text("❌ **SYNTAX ERROR**\nEnsure your math expression is valid.", parse_mode="Markdown")
 
 @dp.message(Command("delete"))
 async def delete_handler(message: types.Message):
@@ -167,7 +178,7 @@ async def delete_handler(message: types.Message):
 
 async def main():
     app = web.Application()
-    app.router.add_get("/", lambda r: web.Response(text="Bot Status: Online"))
+    app.router.add_get("/", lambda r: web.Response(text="Bot Active"))
     runner = web.AppRunner(app); await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", int(os.getenv("PORT", 8080))).start()
     await dp.start_polling(bot)
