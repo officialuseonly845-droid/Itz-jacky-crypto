@@ -24,7 +24,7 @@ g = Github(GITHUB_TOKEN)
 
 # --- UI INTERFACES ---
 def get_update_ui(status, bar, percent):
-    return (f"🛰  **SYSTEM SYNC**\n\n• **OP** → `Database Reconciliation` \n• **ST** → `{status}`\n• **PR** → `{bar}` `{percent}%` ")
+    return (f"🛰  **SYSTEM SYNC**\n\n• **OP** → `DB Reconciliation` \n• **ST** → `{status}`\n• **PR** → `{bar}` `{percent}%` ")
 
 def get_post_ui(status, bar, percent):
     return (f"🛰  **SYSTEM SYNC**\n\n› **OP** : `BROADCAST PROTOCOL` \n› **ST** : `{status}` \n› **PR** : `{bar}` `{percent}%` ")
@@ -71,9 +71,8 @@ async def on_bot_added_as_admin(event: ChatMemberUpdated):
 async def start_handler(message: types.Message):
     if message.chat.type in ['group', 'supergroup', 'channel']: save_id_to_github(message.chat.id)
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📢 MAIN CHANNEL", url="[https://t.me/cryptowitholdy](https://t.me/cryptowitholdy)")],
-        [InlineKeyboardButton(text="📊 TRADING CHANNEL", url="[https://t.me/market_analysis1920](https://t.me/market_analysis1920)")],
-        [InlineKeyboardButton(text="➕ ADD ME", url=f"[https://t.me/](https://t.me/){(await bot.get_me()).username}?startgroup=true")]
+        [InlineKeyboardButton(text="📢 MAIN CHANNEL", url="https://t.me/cryptowitholdy")],
+        [InlineKeyboardButton(text="📊 TRADING CHANNEL", url="https://t.me/market_analysis1920")]
     ])
     await message.answer("👋 **Welcome to Crypto Owl 🦉**\n━━━━━━━━━━━━━━━\nPowered by **TEAM OLDY CRYPTO ❤️‍🩹**", reply_markup=kb, parse_mode="Markdown")
 
@@ -83,7 +82,7 @@ async def update_handler(message: types.Message):
     status_msg = await message.answer("`Accessing Nodes...`", parse_mode="Markdown")
     bar_steps = ["░░░░░", "▓░░░░", "▓▓░░░", "▓▓▓░░", "▓▓▓▓░", "▓▓▓▓▓"]
     for i, bar in enumerate(bar_steps):
-        await status_msg.edit_text(get_update_ui('Processing...', bar, i*20), parse_mode="Markdown")
+        await status_msg.edit_text(get_update_ui('Syncing...', bar, i*20), parse_mode="Markdown")
         await asyncio.sleep(0.6)
     ids = get_stored_ids()
     await status_msg.edit_text(get_update_ui('Completed ✓', '▓▓▓▓▓', 100) + f"\n\n📊 **Synced Nodes:** `{len(ids)}`", parse_mode="Markdown")
@@ -98,6 +97,13 @@ async def post_handler(message: types.Message):
     status_msg = await message.answer("`Broadcasting...`")
     ids = get_stored_ids()
     sent = 0
+    
+    # 4-Step Progress for Posting
+    for i in range(1, 5):
+        bar = "█" * i + "░" * (4-i)
+        await status_msg.edit_text(get_post_ui('Broadcasting...', bar, i*25), parse_mode="Markdown")
+        await asyncio.sleep(0.5)
+
     for chat_id in ids:
         try:
             if reply:
@@ -113,33 +119,31 @@ async def calc_handler(message: types.Message):
     raw_query = message.text.replace('/calculate', '').strip()
     if not raw_query: return await message.answer("💡 **Usage:** `/calculate 2x + 10` or `int x^2`")
     
-    status_msg = await message.answer("`Booting Engine...`", parse_mode="Markdown")
+    status_msg = await message.answer("`Booting Engine...`")
     
-    # 🏃‍♂️ HIGH-VELOCITY RUNNING MAN ANIMATION
-    # Total 12 iterations to ensure man sprints across multiple times
-    for i in range(12):
-        pos = i % 6  # Resets position every 6 frames
-        track = ["."] * 6
-        track[pos] = "🏃‍♂️"
-        running_man = "💨 " + " . ".join(track)
-        
-        progress = min(i * 9, 100)
-        bar = "█" * (i % 6) + "░" * (5 - (i % 6))
-        
+    # --- 4 SECOND RUNNING MAN ANIMATION (1s per step) ---
+    frames = [
+        {"track": "💨 🏃‍♂️ . . . .", "bar": "█░░░░", "pct": 25, "status": "Initializing..."},
+        {"track": "💨 . . 🏃‍♂️ . .", "bar": "██░░░", "pct": 50, "status": "Neural Mapping..."},
+        {"track": "💨 . . . . 🏃‍♂️", "bar": "███░░", "pct": 75, "status": "Finalizing..."},
+        {"track": "💨 . . . . . ✅", "bar": "█████", "pct": 100, "status": "Done!"}
+    ]
+
+    for f in frames:
         ui = (
             f"🏃‍♂️ **MATH_ENGINE::RUNNING**\n\n"
-            f"```\n{running_man}\n```\n"
-            f"• **LOAD** → `[{bar}]` **{progress}%**\n"
-            f"• **STATUS** → `Neural Sprinting...` \n\n"
-            f"🦉 *Oldy's Owl is processing your request...*"
+            f"```\n{f['track']}\n```\n"
+            f"• **LOAD** → `[{f['bar']}]` **{f['pct']}%**\n"
+            f"• **STATUS** → `{f['status']}` \n\n"
+            f"🦉 *Math Owl is crossing the finish line...*"
         )
-        
         try:
             await status_msg.edit_text(ui, parse_mode="Markdown")
-            await asyncio.sleep(0.7) # Optimized for Telegram Edit Limits
         except:
-            continue
+            pass
+        await asyncio.sleep(1.0) # Exact 1 second gap per edit
 
+    # --- CALCULATION ---
     try:
         q = clean_math_query(raw_query)
         x = symbols('x')
@@ -178,7 +182,7 @@ async def delete_handler(message: types.Message):
 
 async def main():
     app = web.Application()
-    app.router.add_get("/", lambda r: web.Response(text="Bot Active"))
+    app.router.add_get("/", lambda r: web.Response(text="Online"))
     runner = web.AppRunner(app); await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", int(os.getenv("PORT", 8080))).start()
     await dp.start_polling(bot)
