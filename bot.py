@@ -22,12 +22,22 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 g = Github(GITHUB_TOKEN)
 
-# --- UI INTERFACES ---
+# --- UI INTERFACES (FULL NAMES RESTORED) ---
 def get_update_ui(status, bar, percent):
-    return (f"🛰  **SYSTEM SYNC**\n\n• **OP** → `DB Reconciliation` \n• **ST** → `{status}`\n• **PR** → `{bar}` `{percent}%` ")
+    return (
+        f"🛰  **SYSTEM SYNCHRONIZATION**\n\n"
+        f"• **OPERATION** → `Database Reconciliation` \n"
+        f"• **STATUS** → `{status}`\n"
+        f"• **PROGRESS** → `{bar}` `{percent}%` "
+    )
 
 def get_post_ui(status, bar, percent):
-    return (f"🛰  **SYSTEM SYNC**\n\n› **OP** : `BROADCAST PROTOCOL` \n› **ST** : `{status}` \n› **PR** : `{bar}` `{percent}%` ")
+    return (
+        f"🛰  **SYSTEM SYNCHRONIZATION**\n\n"
+        f"› **OPERATION** : `BROADCAST PROTOCOL` \n"
+        f"› **STATUS** : `{status}` \n"
+        f"› **PROGRESS** : `{bar}` `{percent}%` "
+    )
 
 # --- SMART MATH PRE-PROCESSOR ---
 def clean_math_query(query):
@@ -51,7 +61,7 @@ def update_github_file(id_list):
         repo = g.get_repo(REPO_NAME)
         new_data = "\n".join(map(str, id_list))
         contents = repo.get_contents(FILE_PATH)
-        repo.update_file(FILE_PATH, "Bot: Sync Update", new_data, contents.sha)
+        repo.update_file(FILE_PATH, "Bot: Full Sync Update", new_data, contents.sha)
         return True
     except: return False
 
@@ -74,15 +84,15 @@ async def start_handler(message: types.Message):
         [InlineKeyboardButton(text="📢 MAIN CHANNEL", url="https://t.me/cryptowitholdy")],
         [InlineKeyboardButton(text="📊 TRADING CHANNEL", url="https://t.me/market_analysis1920")]
     ])
-    await message.answer("👋 **Welcome to Crypto Owl 🦉**\n━━━━━━━━━━━━━━━\nPowered by **TEAM OLDY CRYPTO ❤️‍🩹**", reply_markup=kb, parse_mode="Markdown")
+    await message.answer("👋 **Welcome to Crypto Owl 🦉**\n━━━━━━━━━━━━━━━━━━━━\nPowered by **TEAM OLDY CRYPTO ❤️‍🩹**", reply_markup=kb, parse_mode="Markdown")
 
 @dp.message(Command("update"))
 async def update_handler(message: types.Message):
     if message.from_user.id != OWNER_ID: return
-    status_msg = await message.answer("`Accessing Nodes...`", parse_mode="Markdown")
+    status_msg = await message.answer("`Initializing Sync...`", parse_mode="Markdown")
     bar_steps = ["░░░░░", "▓░░░░", "▓▓░░░", "▓▓▓░░", "▓▓▓▓░", "▓▓▓▓▓"]
     for i, bar in enumerate(bar_steps):
-        await status_msg.edit_text(get_update_ui('Syncing...', bar, i*20), parse_mode="Markdown")
+        await status_msg.edit_text(get_update_ui('Processing...', bar, i*20), parse_mode="Markdown")
         await asyncio.sleep(0.6)
     ids = get_stored_ids()
     await status_msg.edit_text(get_update_ui('Completed ✓', '▓▓▓▓▓', 100) + f"\n\n📊 **Synced Nodes:** `{len(ids)}`", parse_mode="Markdown")
@@ -92,18 +102,18 @@ async def post_handler(message: types.Message):
     if message.from_user.id != OWNER_ID: return
     new_caption = message.text.replace("/post", "").strip()
     reply = message.reply_to_message
-    if not reply and not new_caption: return await message.answer("❌ **Error:** Reply to content or provide text.")
+    if not reply and not new_caption: return await message.answer("❌ **Error:** Content missing.")
 
-    status_msg = await message.answer("`Broadcasting...`")
+    status_msg = await message.answer("`System Preparing...`", parse_mode="Markdown")
     ids = get_stored_ids()
-    sent = 0
     
-    # 4-Step Progress for Posting
+    # Smooth loading for Post
     for i in range(1, 5):
         bar = "█" * i + "░" * (4-i)
         await status_msg.edit_text(get_post_ui('Broadcasting...', bar, i*25), parse_mode="Markdown")
         await asyncio.sleep(0.5)
 
+    sent = 0
     for chat_id in ids:
         try:
             if reply:
@@ -112,40 +122,38 @@ async def post_handler(message: types.Message):
             else: await bot.send_message(chat_id=chat_id, text=new_caption)
             sent += 1
         except: continue
-    await status_msg.edit_text(get_post_ui('SENT ✅', '▓▓▓▓▓', 100) + f"\n\n🚀 **Broadcast Finished!**\nSent to: `{sent}` nodes.", parse_mode="Markdown")
+    await status_msg.edit_text(get_post_ui('COMPLETED ✅', '▓▓▓▓▓', 100) + f"\n\n🚀 **Broadcast Finished!**\nSent to: `{sent}` nodes.", parse_mode="Markdown")
 
 @dp.message(Command("calculate"))
 async def calc_handler(message: types.Message):
-    raw_query = message.text.replace('/calculate', '').strip()
-    if not raw_query: return await message.answer("💡 **Usage:** `/calculate 2x + 10` or `int x^2`")
+    question = message.text.replace('/calculate', '').strip()
+    if not question: return await message.answer("💡 **Usage:** `/calculate 2+2`")
     
-    status_msg = await message.answer("`Booting Engine...`")
-    
-    # --- 4 SECOND RUNNING MAN ANIMATION (1s per step) ---
+    msg = await message.answer("`Accessing Math Core...`", parse_mode="Markdown")
+
     frames = [
-        {"track": "💨 🏃‍♂️ . . . .", "bar": "█░░░░", "pct": 25, "status": "Initializing..."},
-        {"track": "💨 . . 🏃‍♂️ . .", "bar": "██░░░", "pct": 50, "status": "Neural Mapping..."},
-        {"track": "💨 . . . . 🏃‍♂️", "bar": "███░░", "pct": 75, "status": "Finalizing..."},
-        {"track": "💨 . . . . . ✅", "bar": "█████", "pct": 100, "status": "Done!"}
+        {"runner": "🏃‍♂️..................", "load": ".", "percent": "25%", "face": "🤨"},
+        {"runner": ".....🏃‍♂️.............", "load": "..", "percent": "50%", "face": "🧐"},
+        {"runner": "..........🏃‍♂️........", "load": "...", "percent": "75%", "face": "🫤"},
+        {"runner": "................🏃‍♂️", "load": "....", "percent": "100%", "face": "😵‍💫"}
     ]
 
-    for f in frames:
-        ui = (
-            f"🏃‍♂️ **MATH_ENGINE::RUNNING**\n\n"
-            f"```\n{f['track']}\n```\n"
-            f"• **LOAD** → `[{f['bar']}]` **{f['pct']}%**\n"
-            f"• **STATUS** → `{f['status']}` \n\n"
-            f"🦉 *Math Owl is crossing the finish line...*"
+    for frame in frames:
+        text = (
+            f"⚡ **CALCULATING:** `{question}`\n\n"
+            f"**PROGRESS:**\n"
+            f"`{frame['runner']}`\n\n"
+            f"**LOADING** {frame['load']} `{frame['percent']}`\n\n"
+            f"**ANSWER:** {frame['face']}"
         )
         try:
-            await status_msg.edit_text(ui, parse_mode="Markdown")
-        except:
-            pass
-        await asyncio.sleep(1.0) # Exact 1 second gap per edit
+            await msg.edit_text(text, parse_mode="Markdown")
+        except: pass
+        await asyncio.sleep(1.0)
 
-    # --- CALCULATION ---
+    # Final Calculation
     try:
-        q = clean_math_query(raw_query)
+        q = clean_math_query(question)
         x = symbols('x')
         if q.startswith('int'):
             expr = q.replace('int', '').strip()
@@ -154,19 +162,18 @@ async def calc_handler(message: types.Message):
             expr = q.replace('diff', '').strip()
             ans = f"d/dx ({expr}) = {diff(sympify(expr), x)}"
         else:
-            ans = f"Result: {sympify(q)}"
+            ans = f"{sympify(q)}"
         
-        final_ui = (
-            f"🔢 **ANALYSIS COMPLETE**\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"📥 **INPUT:** `{raw_query}`\n"
-            f"📤 **OUTPUT:** `{ans}`\n\n"
-            f"✅ `COMPUTATION SUCCESSFUL`"
+        final_text = (
+            f"⚡ **CALCULATING:** `{question}`\n\n"
+            f"**PROGRESS:**\n"
+            f"`................🏃‍♂️💨`\n\n"
+            f"**LOADING .... 100%**\n\n"
+            f"**ANSWER:** ✅ `{ans}`"
         )
-        await status_msg.edit_text(final_ui, parse_mode="Markdown")
-        
-    except Exception:
-        await status_msg.edit_text("❌ **SYNTAX ERROR**\nEnsure your math expression is valid.", parse_mode="Markdown")
+        await msg.edit_text(final_text, parse_mode="Markdown")
+    except:
+        await msg.edit_text(f"⚡ **CALCULATING:** `{question}`\n\n❌ **SYNTAX ERROR**", parse_mode="Markdown")
 
 @dp.message(Command("delete"))
 async def delete_handler(message: types.Message):
@@ -182,7 +189,7 @@ async def delete_handler(message: types.Message):
 
 async def main():
     app = web.Application()
-    app.router.add_get("/", lambda r: web.Response(text="Online"))
+    app.router.add_get("/", lambda r: web.Response(text="Bot Running"))
     runner = web.AppRunner(app); await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", int(os.getenv("PORT", 8080))).start()
     await dp.start_polling(bot)
