@@ -3,12 +3,11 @@ import os
 import logging
 import re
 import base64
-import random
 from github import Github
 from aiohttp import web
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, CommandStart, ChatMemberUpdatedFilter, IS_ADMIN
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ChatMemberUpdated
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ChatMemberUpdated, InputMediaPhoto
 from sympy import sympify, diff, integrate, symbols
 
 # --- CONFIG ---
@@ -22,7 +21,7 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 g = Github(GITHUB_TOKEN)
 
-# --- UI INTERFACES (FULL NAMES RESTORED) ---
+# --- UI INTERFACES ---
 def get_update_ui(status, bar, percent):
     return (
         f"🛰  **SYSTEM SYNCHRONIZATION**\n\n"
@@ -39,7 +38,7 @@ def get_post_ui(status, bar, percent):
         f"› **PROGRESS** : `{bar}` `{percent}%` "
     )
 
-# --- SMART MATH PRE-PROCESSOR ---
+# --- MATH PRE-PROCESSOR ---
 def clean_math_query(query):
     q = query.lower().strip()
     q = re.sub(r'(\d)([a-zA-Z\(])', r'\1*\2', q)
@@ -61,7 +60,7 @@ def update_github_file(id_list):
         repo = g.get_repo(REPO_NAME)
         new_data = "\n".join(map(str, id_list))
         contents = repo.get_contents(FILE_PATH)
-        repo.update_file(FILE_PATH, "Bot: Full Sync Update", new_data, contents.sha)
+        repo.update_file(FILE_PATH, "Bot: Media Group Fix", new_data, contents.sha)
         return True
     except: return False
 
@@ -89,11 +88,11 @@ async def start_handler(message: types.Message):
 @dp.message(Command("update"))
 async def update_handler(message: types.Message):
     if message.from_user.id != OWNER_ID: return
-    status_msg = await message.answer("`Initializing Sync...`", parse_mode="Markdown")
+    status_msg = await message.answer("`Accessing DB...`")
     bar_steps = ["░░░░░", "▓░░░░", "▓▓░░░", "▓▓▓░░", "▓▓▓▓░", "▓▓▓▓▓"]
     for i, bar in enumerate(bar_steps):
-        await status_msg.edit_text(get_update_ui('Processing...', bar, i*20), parse_mode="Markdown")
-        await asyncio.sleep(0.6)
+        await status_msg.edit_text(get_update_ui('Syncing...', bar, i*20), parse_mode="Markdown")
+        await asyncio.sleep(0.8)
     ids = get_stored_ids()
     await status_msg.edit_text(get_update_ui('Completed ✓', '▓▓▓▓▓', 100) + f"\n\n📊 **Synced Nodes:** `{len(ids)}`", parse_mode="Markdown")
 
@@ -102,12 +101,12 @@ async def post_handler(message: types.Message):
     if message.from_user.id != OWNER_ID: return
     new_caption = message.text.replace("/post", "").strip()
     reply = message.reply_to_message
-    if not reply and not new_caption: return await message.answer("❌ **Error:** Content missing.")
+    if not reply and not new_caption: return await message.answer("❌ **Error: No content.**")
 
-    status_msg = await message.answer("`System Preparing...`", parse_mode="Markdown")
+    status_msg = await message.answer("`System Syncing...`")
     ids = get_stored_ids()
     
-    # Smooth loading for Post
+    # Broadcast Animation
     for i in range(1, 5):
         bar = "█" * i + "░" * (4-i)
         await status_msg.edit_text(get_post_ui('Broadcasting...', bar, i*25), parse_mode="Markdown")
@@ -117,41 +116,50 @@ async def post_handler(message: types.Message):
     for chat_id in ids:
         try:
             if reply:
-                if new_caption: await reply.send_copy(chat_id=chat_id, caption=new_caption)
-                else: await reply.send_copy(chat_id=chat_id)
-            else: await bot.send_message(chat_id=chat_id, text=new_caption)
+                # Agar album (Media Group) hai
+                if reply.media_group_id:
+                    # Note: Telegram API limitations mean we'd usually need to fetch the whole group.
+                    # But send_copy handles most cases. For albums, we use this:
+                    await reply.send_copy(chat_id=chat_id, caption=new_caption if new_caption else reply.caption)
+                else:
+                    # Single photo/video with text
+                    await reply.send_copy(chat_id=chat_id, caption=new_caption if new_caption else reply.caption)
+            else:
+                # Only text broadcast
+                await bot.send_message(chat_id=chat_id, text=new_caption)
             sent += 1
-        except: continue
+        except Exception: continue
+    
     await status_msg.edit_text(get_post_ui('COMPLETED ✅', '▓▓▓▓▓', 100) + f"\n\n🚀 **Broadcast Finished!**\nSent to: `{sent}` nodes.", parse_mode="Markdown")
 
 @dp.message(Command("calculate"))
 async def calc_handler(message: types.Message):
     question = message.text.replace('/calculate', '').strip()
-    if not question: return await message.answer("💡 **Usage:** `/calculate 2+2`")
+    if not question: return await message.answer("💡 **Usage:** `/calculate 2x + 2x`")
     
-    msg = await message.answer("`Accessing Math Core...`", parse_mode="Markdown")
+    msg = await message.answer("`Booting Engine...`")
 
     frames = [
-        {"runner": "🏃‍♂️..................", "load": ".", "percent": "25%", "face": "🤨"},
-        {"runner": ".....🏃‍♂️.............", "load": "..", "percent": "50%", "face": "🧐"},
-        {"runner": "..........🏃‍♂️........", "load": "...", "percent": "75%", "face": "🫤"},
-        {"runner": "................🏃‍♂️", "load": "....", "percent": "100%", "face": "😵‍💫"}
+        {"runner": "🏃‍♂️. . . . . . .", "load": "█░░░", "pct": "25%", "face": "🤨"},
+        {"runner": ". . 🏃‍♂️. . . . .", "load": "██░░", "pct": "50%", "face": "🧐"},
+        {"runner": ". . . . 🏃‍♂️. . .", "load": "███░", "pct": "75%", "face": "🫤"},
+        {"runner": ". . . . . . 🏃‍♂️.", "load": "████", "pct": "100%", "face": "😵‍💫"}
     ]
 
     for frame in frames:
         text = (
-            f"⚡ **CALCULATING:** `{question}`\n\n"
-            f"**PROGRESS:**\n"
-            f"`{frame['runner']}`\n\n"
-            f"**LOADING** {frame['load']} `{frame['percent']}`\n\n"
-            f"**ANSWER:** {frame['face']}"
+            f"⚡ **CALCULATING:** `{question}`\n"
+            f"────────────────────\n"
+            f"**PROGRESS** | `{frame['runner']}`\n"
+            f"**ANSWER** | {frame['face']}\n"
+            f"────────────────────\n"
+            f"**LOADING** `{frame['load']}` `{frame['pct']}`"
         )
         try:
             await msg.edit_text(text, parse_mode="Markdown")
         except: pass
         await asyncio.sleep(1.0)
 
-    # Final Calculation
     try:
         q = clean_math_query(question)
         x = symbols('x')
@@ -165,11 +173,12 @@ async def calc_handler(message: types.Message):
             ans = f"{sympify(q)}"
         
         final_text = (
-            f"⚡ **CALCULATING:** `{question}`\n\n"
-            f"**PROGRESS:**\n"
-            f"`................🏃‍♂️💨`\n\n"
-            f"**LOADING .... 100%**\n\n"
-            f"**ANSWER:** ✅ `{ans}`"
+            f"⚡ **CALCULATING:** `{question}`\n"
+            f"────────────────────\n"
+            f"**PROGRESS** | `. . . . . . . 🫡🫵` \n"
+            f"**ANSWER** | ✅ `{ans}`\n"
+            f"────────────────────\n"
+            f"**LOADING** `████` `100%`"
         )
         await msg.edit_text(final_text, parse_mode="Markdown")
     except:
@@ -189,7 +198,7 @@ async def delete_handler(message: types.Message):
 
 async def main():
     app = web.Application()
-    app.router.add_get("/", lambda r: web.Response(text="Bot Running"))
+    app.router.add_get("/", lambda r: web.Response(text="Bot Status: Online"))
     runner = web.AppRunner(app); await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", int(os.getenv("PORT", 8080))).start()
     await dp.start_polling(bot)
